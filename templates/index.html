@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Advantest 93000 DUT Board Config</title>
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+  <style>
+    #toast-container {
+      top: auto !important;
+      bottom: auto !important;
+      left: 50% !important;
+      right: auto !important;
+      transform: translateX(-50%) !important;
+      position: relative !important; /* make it flow in the document */
+      margin-top: 1rem; /* space below your form */
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h4>Advantest 93000 DUT Board Configuration</h4>
+
+    <form id="configForm">
+      <!-- Filling Options -->
+      <div class="row">
+        <div class="input-field col s10">
+          <i class="material-icons prefix">filter_list</i>
+          <select id="filling_options" multiple required>
+            {% for opt in filling_options %}
+              <option value="{{ opt }}">{{ opt }}</option>
+            {% endfor %}
+          </select>
+          <label for="filling_options">Filling Options (select at least one)</label>
+        </div>
+      </div>
+
+      <!-- Loading Codes -->
+      <div class="row">
+        <div class="input-field col s8">
+          <i class="material-icons prefix">keyboard_hide</i>
+          <input type="text" id="loading_codes">
+          <label for="loading_codes">Option Code(s) [comma separated]</label>
+        </div>
+      </div>
+
+      <!-- Submit -->
+      <div class="row">
+        <div class="input-field col s6">
+          <button id="submitBtn" class="btn waves-effect waves-light" type="submit">
+            Create Copy of the Config SS
+            <i class="material-icons right">send</i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Submit -->
+      <div class="row">
+        <div class="input-field col s6">
+          <div id="toast-container"></div>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", function() {
+      M.FormSelect.init(document.querySelectorAll("select"));
+    });
+
+    document.getElementById("configForm").addEventListener("submit", async function(e) {
+      e.preventDefault();
+
+      // collect filling options
+      const fillingOptions = Array.from(
+        document.getElementById("filling_options").selectedOptions
+      ).map(o => o.value);
+
+      // collect loading codes
+      const loadingCodes = document.getElementById("loading_codes").value;
+
+      // show processing toast
+      const processingToast = M.toast({
+        html: "⚙️ Processing - This may take a few minutes...",
+        displayLength: Infinity
+      });
+
+      try {
+        const response = await fetch("/api/generate_excel_files", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            filling_options: fillingOptions,
+            loading_codes: loadingCodes
+          })
+        });
+
+        processingToast.dismiss();
+
+        if (!response.ok) {
+          throw new Error("Server error " + response.status);
+        }
+
+        // extract filename from headers
+        let defaultFileName = "generated.xlsm";
+        const disposition = response.headers.get("content-disposition");
+        if (disposition && disposition.includes("filename=")) {
+          defaultFileName = disposition.split("filename=")[1].replace(/"/g, "");
+        }
+
+        const blob = await response.blob();
+
+        // ---- File System Access API (Save As dialog) ----
+        if (window.showSaveFilePicker) {
+          const handle = await window.showSaveFilePicker({
+            suggestedName: defaultFileName,
+            types: [
+              {
+                description: "Excel Macro-Enabled Workbook",
+                accept: { "application/vnd.ms-excel.sheet.macroEnabled.12": [".xlsm"] }
+              }
+            ]
+          });
+          const writable = await handle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+        } else {
+          // fallback: auto-download
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = defaultFileName;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          window.URL.revokeObjectURL(url);
+        }
+
+        M.toast({
+          html: `✅ File saved successfully`,
+          classes: "green darken-1"
+        });
+      } catch (err) {
+        processingToast.dismiss();
+        console.error("❌ Error:", err);
+        M.toast({
+          html: "❌ File location is not selected",
+          classes: "red darken-1"
+        });
+      }
+    });
+  </script>
+</body>
+</html>
