@@ -102,7 +102,7 @@ def fetch_filling_options():
 
         # Deduplicate while preserving order
         option_list = list(dict.fromkeys(option_list))
-
+        print(option_list)
         return option_list
 
     except Exception as e:
