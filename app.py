@@ -6,6 +6,10 @@ import os
 import datetime
 import shutil
 from openpyxl.worksheet.datavalidation import DataValidation
+from dotenv import load_dotenv
+
+
+load_dotenv(dotenv_path="/home/repo/google_sheet_login/.env")
 
 
 app = Flask(__name__)
