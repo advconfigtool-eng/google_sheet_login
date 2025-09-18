@@ -102,7 +102,6 @@ def fetch_filling_options():
 
         # Deduplicate while preserving order
         option_list = list(dict.fromkeys(option_list))
-        print(option_list)
         return option_list
 
     except Exception as e:
@@ -283,7 +282,7 @@ def generate_excel_files():
                     if sheet_name not in ("Fillings", "FillingsData") and "." in sheet_name:
                         dep_ws = dep_wb[sheet_name]
                         copied_ws = copy_sheet_values(dep_ws, wb, f"{sheet_name}.{dep}")
-                        # copied_ws.sheet_state = "hidden"
+                        copied_ws.sheet_state = "hidden"
 
         # 🔹 Save workbook
         wb.save(copy_path)
