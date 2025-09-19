@@ -40,7 +40,7 @@ def sync_filling_data():
     option_list = []
     try:
         # 1. List Excel files in folder
-        list_file_result = gs.list_files_in_folder(EXCEL_FOLDER_GOOGLE_DRIVE_ID, "mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' and trashed=false")
+        list_file_result = gs.list_latest_files_in_folder(EXCEL_FOLDER_GOOGLE_DRIVE_ID, "mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' and trashed=false")
         file_list = list_file_result.get("files", [])
 
         # 2. Iterate over files
@@ -137,17 +137,16 @@ def download_template_file():
     try:
         folder_id = os.getenv("EXCEL_FOLDER_GOOGLE_DRIVE_ID")
         # 1. List Excel files in Google Drive folder
-        list_file_result = gs.list_files_in_folder(
+        list_file_result = gs.list_latest_files_in_folder(
             folder_id,
             "(mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' \
             or mimeType='application/vnd.ms-excel.sheet.macroEnabled.12') and trashed=false"
         )
 
-        file_list = list_file_result.get("files", [])
+        file_list = list_file_result["files"]
 
         # 2. Download each file into TEMPLATE_FOLDER
         for file_info in file_list:
-            app.logger.info(file_info)
             file_path = os.path.join(EXCEL_TEMPLATE_FOLDER, file_info["name"])
             gs.download_file(file_info["id"], file_path)
 

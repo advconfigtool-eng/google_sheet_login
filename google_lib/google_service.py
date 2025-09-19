@@ -111,7 +111,6 @@ class GoogleService:
         return file.get("id")
 
     def list_files_in_folder(self, folder_id, query=None):
-        """List Excel files in a Google Drive folder"""
         result = {
             "is_success": False,
             "err_msg": "",
@@ -134,7 +133,45 @@ class GoogleService:
             result["is_success"] = True
 
         except Exception as e:
-            result["err_msg"] = f"Error listing Excel files in folder: {e}"
+            result["err_msg"] = f"Error listing files in folder: {e}"
+
+        return result
+
+    def list_latest_files_in_folder(self, folder_id, query=None):
+        result = {
+            "is_success": False,
+            "err_msg": "",
+            "files": []  # array of {id, name, mimeType, modifiedTime}
+        }
+
+        try:
+            service = build("drive", "v3", credentials=self.creds)
+
+            # Always constrain search to the folder
+            formatted_query = f"'{folder_id}' in parents"
+            if query:
+                formatted_query += f" and ({query})"
+
+            response = service.files().list(
+                q=formatted_query,
+                fields="files(id, name, mimeType, modifiedTime)",
+                orderBy="modifiedTime desc"
+            ).execute()
+
+            files = response.get("files", [])
+
+            # Keep only the latest per name
+            latest_by_name = {}
+            for f in files:
+                name = f["name"]
+                if name not in latest_by_name:
+                    latest_by_name[name] = f  # first occurrence = newest due to orderBy
+
+            result["files"] = list(latest_by_name.values())
+            result["is_success"] = True
+
+        except Exception as e:
+            result["err_msg"] = f"Error listing files in folder: {e}"
 
         return result
 
