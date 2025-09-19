@@ -53,7 +53,6 @@
         </div>
       </div>
 
-      <!-- Submit -->
       <div class="row">
         <div class="input-field col s6">
           <div id="toast-container"></div>
@@ -63,92 +62,105 @@
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
-  <script>
-    document.addEventListener("DOMContentLoaded", function() {
-      M.FormSelect.init(document.querySelectorAll("select"));
+<script>
+  document.addEventListener("DOMContentLoaded", function() {
+    M.FormSelect.init(document.querySelectorAll("select"));
+  });
+
+  document.getElementById("configForm").addEventListener("submit", async function(e) {
+    e.preventDefault();
+
+    const fillingOptions = Array.from(
+      document.getElementById("filling_options").selectedOptions
+    ).map(o => o.value);
+
+    const loadingCodes = document.getElementById("loading_codes").value;
+
+    const processingToast = M.toast({
+      html: "⚙️ Generating file - please wait...",
+      displayLength: Infinity
     });
 
-    document.getElementById("configForm").addEventListener("submit", async function(e) {
-      e.preventDefault();
-
-      // collect filling options
-      const fillingOptions = Array.from(
-        document.getElementById("filling_options").selectedOptions
-      ).map(o => o.value);
-
-      // collect loading codes
-      const loadingCodes = document.getElementById("loading_codes").value;
-
-      // show processing toast
-      const processingToast = M.toast({
-        html: "⚙️ Processing - This may take a few minutes...",
-        displayLength: Infinity
+    try {
+      const response = await fetch("/api/generate_excel_files", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filling_options: fillingOptions,
+          loading_codes: loadingCodes
+        })
       });
 
-      try {
-        const response = await fetch("/api/generate_excel_files", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            filling_options: fillingOptions,
-            loading_codes: loadingCodes
-          })
-        });
+      processingToast.dismiss();
 
-        processingToast.dismiss();
+      if (!response.ok) throw new Error("Server error " + response.status);
 
-        if (!response.ok) {
-          throw new Error("Server error " + response.status);
-        }
-
-        // extract filename from headers
-        let defaultFileName = "generated.xlsm";
-        const disposition = response.headers.get("content-disposition");
-        if (disposition && disposition.includes("filename=")) {
-          defaultFileName = disposition.split("filename=")[1].replace(/"/g, "");
-        }
-
-        const blob = await response.blob();
-
-        // ---- File System Access API (Save As dialog) ----
-        if (window.showSaveFilePicker) {
-          const handle = await window.showSaveFilePicker({
-            suggestedName: defaultFileName,
-            types: [
-              {
-                description: "Excel Macro-Enabled Workbook",
-                accept: { "application/vnd.ms-excel.sheet.macroEnabled.12": [".xlsm"] }
-              }
-            ]
-          });
-          const writable = await handle.createWritable();
-          await writable.write(blob);
-          await writable.close();
-        } else {
-          // fallback: auto-download
-          const url = window.URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = defaultFileName;
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-          window.URL.revokeObjectURL(url);
-        }
-
-        M.toast({
-          html: `✅ File saved successfully`,
-          classes: "green darken-1"
-        });
-      } catch (err) {
-        processingToast.dismiss();
-        console.error("❌ Error:", err);
-        M.toast({
-          html: "❌ File location is not selected",
-          classes: "red darken-1"
-        });
+      let defaultFileName = "generated.xlsm";
+      const disposition = response.headers.get("content-disposition");
+      if (disposition && disposition.includes("filename=")) {
+        defaultFileName = disposition.split("filename=")[1].replace(/"/g, "");
       }
-    });
-  </script>
+
+      const blob = await response.blob();
+
+      // build toast HTML with a button
+      const toastHTML = `
+        <span>✅ File is ready</span>
+        <button id="downloadBtn" class="btn-flat toast-action">Download</button>
+      `;
+      M.toast({ html: toastHTML, displayLength: 10000 });
+
+      // attach click listener AFTER toast is rendered
+      setTimeout(() => {
+        const btn = document.getElementById("downloadBtn");
+        if (btn) {
+          btn.addEventListener("click", async () => {
+            if (window.showSaveFilePicker) {
+              try {
+                const handle = await window.showSaveFilePicker({
+                  suggestedName: defaultFileName,
+                  types: [
+                    {
+                      description: "Excel Macro-Enabled Workbook",
+                      accept: {
+                        "application/vnd.ms-excel.sheet.macroEnabled.12": [".xlsm"]
+                      }
+                    }
+                  ]
+                });
+                const writable = await handle.createWritable();
+                await writable.write(blob);
+                await writable.close();
+                M.toast({ html: "✅ File saved successfully", classes: "green darken-1" });
+              } catch (err) {
+                if (err.name === "AbortError") {
+                  M.toast({ html: "❌ Save canceled", classes: "red darken-1" });
+                } else {
+                  M.toast({ html: "❌ Save failed: " + err.message, classes: "red darken-1" });
+                }
+              }
+            } else {
+              // fallback auto-download
+              const url = window.URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = defaultFileName;
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+              window.URL.revokeObjectURL(url);
+              M.toast({ html: "✅ File downloaded", classes: "green darken-1" });
+            }
+          });
+        }
+      }, 200); // wait a tick for toast DOM to exist
+
+    } catch (err) {
+      processingToast.dismiss();
+      console.error("❌ Error:", err);
+      M.toast({ html: "❌ Failed: " + err.message, classes: "red darken-1" });
+    }
+  });
+</script>
 </body>
 </html>

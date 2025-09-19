@@ -93,6 +93,11 @@ class GoogleService:
                 print(f"Download {int(status.progress() * 100)}%.")
         return dest_path
 
+    def get_file_name(self, file_id):
+        service = build("drive", "v3", credentials=self.creds)
+        file = service.files().get(fileId=file_id, fields="name").execute()
+        return file.get("name")
+
     def upload_file(self, file_path, mime_type="application/octet-stream", parent_folder_id=None):
         service = build("drive", "v3", credentials=self.creds)
         metadata = {"name": os.path.basename(file_path)}

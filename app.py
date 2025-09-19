@@ -9,7 +9,8 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from dotenv import load_dotenv
 
 
-load_dotenv(dotenv_path="/home/repo/google_sheet_login/.env")
+# load_dotenv(dotenv_path="/home/repo/google_sheet_login/.env")
+load_dotenv(dotenv_path=".env")
 
 
 app = Flask(__name__)
@@ -21,7 +22,7 @@ FILLING_SHEET_NAME = os.getenv("FILLING_SHEET_NAME", "Fillings")
 FILLING_DATA_SHEET_NAME = os.getenv("FILLING_DATA_SHEET_NAME", "FillingsData")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 GENERATED_FOLDER = os.path.join(BASE_DIR, "generated")
-EXCEL_MASTER_FILE_PATH = os.path.join(BASE_DIR, "excel_templates", "r2.01 EXA Scale Configuration Tool.xlsm")
+EXCEL_MASTER_FILE_ID = os.getenv("MASTER_EXCEL_FILE_ID")
 EXCEL_TEMPLATE_FOLDER = os.path.join(BASE_DIR, "excel_templates")
 
 os.makedirs(GENERATED_FOLDER, exist_ok=True)
@@ -36,7 +37,7 @@ def index():
 def sync_filling_data():
     fillings_sheet = []
     fillings_data_sheet = []
-
+    option_list = []
     try:
         # 1. List Excel files in folder
         list_file_result = gs.list_files_in_folder(EXCEL_FOLDER_GOOGLE_DRIVE_ID, "mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' and trashed=false")
@@ -53,6 +54,7 @@ def sync_filling_data():
             # Fillings sheet rows
             for row in file_data.get("Fillings", [])[1:]:
                 fillings_sheet.append(row)
+                option_list.append(row[1])
 
             # FillingsData sheet rows
             for row in file_data.get("FillingsData", [])[1:]:
@@ -75,8 +77,29 @@ def sync_filling_data():
         # 4. Write new values
         if fillings_sheet:
             gs.write_sheet(GOOGLE_SHEET_LOGIN_SHEET_ID, f"{FILLING_SHEET_NAME}!A2", fillings_sheet)
+            time.sleep(0.1)
         if fillings_data_sheet:
             gs.write_sheet(GOOGLE_SHEET_LOGIN_SHEET_ID, f"{FILLING_DATA_SHEET_NAME}!B2", fillings_data_sheet)
+            time.sleep(0.1)
+
+        option_list = list(set(option_list))
+        current_option_list = []
+        filling_order_data = gs.read_sheet(os.getenv("GOOGLE_SHEET_LOGIN_SHEET_ID"), "FillingsOrder!A2:A")
+        for row in filling_order_data:
+            if row[0]:
+                current_option_list.append(row[0])
+
+        new_option_list = []
+        for option in current_option_list:
+            if option in option_list:
+                new_option_list.append([option])
+        for option in option_list:
+            if option not in current_option_list:
+                new_option_list.append([option])
+        gs.clear_range(GOOGLE_SHEET_LOGIN_SHEET_ID, f"FillingsOrder!A2:A")
+        time.sleep(0.1)
+        gs.write_sheet(GOOGLE_SHEET_LOGIN_SHEET_ID, f"FillingsOrder!A2", new_option_list)
+        time.sleep(0.1)
 
         # 5. Return JSON
         return jsonify({
@@ -96,14 +119,11 @@ def get_filling_options():
 def fetch_filling_options():
     try:
         sheet_id = os.getenv("GOOGLE_SHEET_LOGIN_SHEET_ID")
-        sheet_name = os.getenv("FILLING_SHEET_NAME")
-
-        read_sheet_data = gs.read_sheet(sheet_id, f"'{sheet_name}'!B2:B")
+        read_sheet_data = gs.read_sheet(sheet_id, f"FillingsOrder!A2:A")
         # Extract values safely
         option_list = [
             row[0] for row in read_sheet_data if row and row[0]
         ]
-
         # Deduplicate while preserving order
         option_list = list(dict.fromkeys(option_list))
         return option_list
@@ -117,7 +137,12 @@ def download_template_file():
     try:
         folder_id = os.getenv("EXCEL_FOLDER_GOOGLE_DRIVE_ID")
         # 1. List Excel files in Google Drive folder
-        list_file_result = gs.list_files_in_folder(folder_id, "mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' and trashed=false")
+        list_file_result = gs.list_files_in_folder(
+            folder_id,
+            "(mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' \
+            or mimeType='application/vnd.ms-excel.sheet.macroEnabled.12') and trashed=false"
+        )
+
         file_list = list_file_result.get("files", [])
 
         # 2. Download each file into TEMPLATE_FOLDER
@@ -246,12 +271,13 @@ def generate_excel_files():
 
         # 🔹 Create timestamped file name
         timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-        master_file_name = os.path.basename(EXCEL_MASTER_FILE_PATH)
+        master_file_name = gs.get_file_name(EXCEL_MASTER_FILE_ID)
+        master_file_path = os.path.join(EXCEL_TEMPLATE_FOLDER, master_file_name)
         file_name = f"{master_file_name}_{'_'.join(filling_options)}_{timestamp}.xlsm"
         copy_path = os.path.join(GENERATED_FOLDER, file_name)
 
         # 🔹 Copy master file
-        shutil.copy(EXCEL_MASTER_FILE_PATH, copy_path)
+        shutil.copy(master_file_path, copy_path)
 
         # 🔹 Load workbook
         wb = load_workbook(copy_path, keep_vba=True)
