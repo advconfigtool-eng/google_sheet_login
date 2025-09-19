@@ -9,8 +9,8 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from dotenv import load_dotenv
 
 
-# load_dotenv(dotenv_path="/home/repo/google_sheet_login/.env")
-load_dotenv(dotenv_path=".env")
+load_dotenv(dotenv_path="/home/repo/google_sheet_login/.env")
+# load_dotenv(dotenv_path=".env")
 
 
 app = Flask(__name__)
