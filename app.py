@@ -7,6 +7,7 @@ import datetime
 import shutil
 from openpyxl.worksheet.datavalidation import DataValidation
 from dotenv import load_dotenv
+from zoneinfo import ZoneInfo
 
 
 load_dotenv(dotenv_path="/home/repo/google_sheet_login/.env")
@@ -24,7 +25,8 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 GENERATED_FOLDER = os.path.join(BASE_DIR, "generated")
 EXCEL_MASTER_FILE_ID = os.getenv("MASTER_EXCEL_FILE_ID")
 EXCEL_TEMPLATE_FOLDER = os.path.join(BASE_DIR, "excel_templates")
-
+# US Central Time
+TIME_ZONE = ZoneInfo("America/Chicago")
 os.makedirs(GENERATED_FOLDER, exist_ok=True)
 
 
@@ -269,10 +271,10 @@ def generate_excel_files():
         dependencies = list(dict.fromkeys(dependencies))  # dedupe
 
         # 🔹 Create timestamped file name
-        timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+        timestamp = datetime.datetime.now(TIME_ZONE).strftime("%Y%m%d %H%M%S")
         master_file_name = gs.get_file_name(EXCEL_MASTER_FILE_ID)
         master_file_path = os.path.join(EXCEL_TEMPLATE_FOLDER, master_file_name)
-        file_name = f"{master_file_name}_{'_'.join(filling_options)}_{timestamp}.xlsm"
+        file_name = f"User Copy of {master_file_name} {timestamp}.xlsm"
         copy_path = os.path.join(GENERATED_FOLDER, file_name)
 
         # 🔹 Copy master file
