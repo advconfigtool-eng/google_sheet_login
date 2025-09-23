@@ -272,9 +272,9 @@ def generate_excel_files():
 
         # 🔹 Create timestamped file name
         timestamp = datetime.datetime.now(TIME_ZONE).strftime("%Y%m%d %H%M%S")
-        master_file_name = gs.get_file_name(EXCEL_MASTER_FILE_ID).replace(".xlsm", "")
+        master_file_name = gs.get_file_name(EXCEL_MASTER_FILE_ID)
         master_file_path = os.path.join(EXCEL_TEMPLATE_FOLDER, master_file_name)
-        file_name = f"User Copy of {master_file_name} {timestamp}.xlsm"
+        file_name = f"User Copy of {master_file_name.replace('.xlsm', '')} {timestamp}.xlsm"
         copy_path = os.path.join(GENERATED_FOLDER, file_name)
 
         # 🔹 Copy master file
