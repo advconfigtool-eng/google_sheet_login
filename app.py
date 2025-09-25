@@ -243,92 +243,106 @@ def validate_input(filling_options, loading_codes):
 
 @app.route("/api/generate_excel_files", methods=["POST"])
 def generate_excel_files():
-    try:
-        body = request.get_json()
-        filling_options = body.get("filling_options", [])
-        loading_codes = body.get("loading_codes", "")
+    err_msg = ""
+    file_name = ""
+    copy_path = ""
+    body = request.get_json()
+    filling_options = body.get("filling_options", [])
+    loading_codes = body.get("loading_codes", "")
+    time_now = datetime.datetime.now(TIME_ZONE)
+    timestamp = time_now.strftime("%Y%m%d %H%M%S")
+    client_ip = request.remote_addr
+    login_row = [time_now.strftime("%Y-%m-%d %H:%M:%S"), client_ip, ", ".join(filling_options), loading_codes]
+    # 🔹 Validate input
+    validate_result = validate_input(filling_options, loading_codes)
+    if validate_result["is_success"]:
+        try:
+            validated_filling_dict = validate_result["validated_filling_dict"]
+            filling = []
+            filling_data = []
+            dependencies = []
+            # 🔹 Collect data
 
-        result = {"is_success": False, "err_msg": "", "file_content": ""}
+            for filling_option, names in validated_filling_dict.items():
+                for filling_name, details in names.items():
+                    filling.append(details["row_data"])
+                    filling_data.extend(details["filling_data"])
+                    dependencies.extend(details["dependencies"])
 
-        # 🔹 Validate input
-        validate_result = validate_input(filling_options, loading_codes)
-        if not validate_result["is_success"]:
-            return jsonify({"is_success": False, "err_msg": validate_result["err_msg"]})
+            dependencies = list(dict.fromkeys(dependencies))  # dedupe
 
-        validated_filling_dict = validate_result["validated_filling_dict"]
+            # 🔹 Create timestamped file name
+            master_file_name = gs.get_file_name(EXCEL_MASTER_FILE_ID)
+            master_file_path = os.path.join(EXCEL_TEMPLATE_FOLDER, master_file_name)
+            file_name = f"User Copy of {master_file_name.replace('.xlsm', '').replace('Template_', '')} {timestamp}.xlsm"
+            copy_path = os.path.join(GENERATED_FOLDER, file_name)
 
-        filling = []
-        filling_data = []
-        dependencies = []
+            # 🔹 Copy master file
+            shutil.copy(master_file_path, copy_path)
 
-        # 🔹 Collect data
-        for filling_option, names in validated_filling_dict.items():
-            for filling_name, details in names.items():
-                filling.append(details["row_data"])
-                filling_data.extend(details["filling_data"])
-                dependencies.extend(details["dependencies"])
+            # 🔹 Load workbook
+            wb = load_workbook(copy_path, keep_vba=True)
 
-        dependencies = list(dict.fromkeys(dependencies))  # dedupe
+            # 🔹 Write Fillings
+            if "Fillings" in wb.sheetnames and filling:
+                ws = wb["Fillings"]
+                for r, row in enumerate(filling, start=2):
+                    for c, val in enumerate(row, start=1):
+                        ws.cell(row=r, column=c, value=val)
 
-        # 🔹 Create timestamped file name
-        timestamp = datetime.datetime.now(TIME_ZONE).strftime("%Y%m%d %H%M%S")
-        master_file_name = gs.get_file_name(EXCEL_MASTER_FILE_ID)
-        master_file_path = os.path.join(EXCEL_TEMPLATE_FOLDER, master_file_name)
-        file_name = f"User Copy of {master_file_name.replace('.xlsm', '').replace('Template_', '')} {timestamp}.xlsm"
-        copy_path = os.path.join(GENERATED_FOLDER, file_name)
+            # 🔹 Write FillingsData
+            if "FillingsData" in wb.sheetnames and filling_data:
+                ws = wb["FillingsData"]
+                for r, row in enumerate(filling_data, start=2):  # write starting at row 2
+                    for c, val in enumerate(row, start=2):
+                        if isinstance(val, str) and val.strip().replace(".", "", 1).isdigit():
+                            # Convert to int or float depending on presence of "."
+                            if "." in val:
+                                val = float(val)
+                            else:
+                                val = int(val)
+                        ws.cell(row=r, column=c, value=val)
+            rebuild_data_validation(wb)
 
-        # 🔹 Copy master file
-        shutil.copy(master_file_path, copy_path)
+            # 🔹 Copy dependency sheets (if exist)
+            for dep in dependencies:
+                dep_file = os.path.join(EXCEL_TEMPLATE_FOLDER, f"{dep}.xlsx")
+                if os.path.exists(dep_file):
+                    dep_wb = load_workbook(dep_file)
+                    for sheet_name in dep_wb.sheetnames:
+                        if sheet_name not in ("Fillings", "FillingsData") and "." in sheet_name:
+                            dep_ws = dep_wb[sheet_name]
+                            copied_ws = copy_sheet_values(dep_ws, wb, f"{sheet_name}.{dep}")
+                            copied_ws.sheet_state = "hidden"
 
-        # 🔹 Load workbook
-        wb = load_workbook(copy_path, keep_vba=True)
+            # 🔹 Save workbook
+            wb.save(copy_path)
+            wb.close()
+            login_row.append(f"Success: Excel file: {file_name} has been generated")
+            login_row.append(True)
+        except Exception as e:
+            err_msg = f"❌ Excel generation failed: {e}"
+    else:
+        err_msg = validate_result["err_msg"]
+    if err_msg:
+        login_row.append(f"Failed: {err_msg}")
+        login_row.append(False)
 
-        # 🔹 Write Fillings
-        if "Fillings" in wb.sheetnames and filling:
-            ws = wb["Fillings"]
-            for r, row in enumerate(filling, start=2):
-                for c, val in enumerate(row, start=1):
-                    ws.cell(row=r, column=c, value=val)
+    gs.append_sheet(
+            os.getenv("GOOGLE_SHEET_LOGIN_SHEET_ID"),
+            f"'{os.getenv('LOGIN_LOG_SHEET_NAME')}",
+            [[login_row]]
+        )
 
-        # 🔹 Write FillingsData
-        if "FillingsData" in wb.sheetnames and filling_data:
-            ws = wb["FillingsData"]
-            for r, row in enumerate(filling_data, start=2):  # write starting at row 2
-                for c, val in enumerate(row, start=2):
-                    if isinstance(val, str) and val.strip().replace(".", "", 1).isdigit():
-                        # Convert to int or float depending on presence of "."
-                        if "." in val:
-                            val = float(val)
-                        else:
-                            val = int(val)
-                    ws.cell(row=r, column=c, value=val)
-        rebuild_data_validation(wb)
-
-        # 🔹 Copy dependency sheets (if exist)
-        for dep in dependencies:
-            dep_file = os.path.join(EXCEL_TEMPLATE_FOLDER, f"{dep}.xlsx")
-            if os.path.exists(dep_file):
-                dep_wb = load_workbook(dep_file)
-                for sheet_name in dep_wb.sheetnames:
-                    if sheet_name not in ("Fillings", "FillingsData") and "." in sheet_name:
-                        dep_ws = dep_wb[sheet_name]
-                        copied_ws = copy_sheet_values(dep_ws, wb, f"{sheet_name}.{dep}")
-                        copied_ws.sheet_state = "hidden"
-
-        # 🔹 Save workbook
-        wb.save(copy_path)
-        wb.close()
-
+    if err_msg:
+        return jsonify(login_row)
+    else:
         return send_file(
             copy_path,
             as_attachment=True,
             download_name=file_name,
             mimetype="application/vnd.ms-excel.sheet.macroEnabled.12"
         )
-
-    except Exception as e:
-        app.logger.error(f"❌ Excel generation failed: {e}")
-        return jsonify({"is_success": False, "err_msg": str(e)}), 500
 
 
 def get_row_dict(row_data, header):

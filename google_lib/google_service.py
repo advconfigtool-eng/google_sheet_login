@@ -56,6 +56,20 @@ class GoogleService:
         ).execute()
         return result.get("values", [])
 
+    def append_sheet(self, spreadsheet_id, range_name, values):
+        service = build("sheets", "v4", credentials=self.creds)
+        body = {
+            "values": values
+        }
+        result = service.spreadsheets().values().append(
+            spreadsheetId=spreadsheet_id,
+            range=range_name,
+            valueInputOption="RAW",   # or "USER_ENTERED"
+            insertDataOption="INSERT_ROWS",
+            body=body
+        ).execute()
+        return result
+
     def write_sheet(self, spreadsheet_id, range_name, values):
         service = build("sheets", "v4", credentials=self.creds)
         body = {"values": values}
