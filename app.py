@@ -319,14 +319,14 @@ def generate_excel_files():
             wb.save(copy_path)
             wb.close()
             login_row.append(f"Success: Excel file: {file_name} has been generated")
-            login_row.append(1)
+            login_row.append("1")
         except Exception as e:
             err_msg = f"❌ Excel generation failed: {e}"
     else:
         err_msg = validate_result["err_msg"]
     if err_msg:
         login_row.append(f"Failed: {err_msg}")
-        login_row.append(0)
+        login_row.append("0")
 
     gs.append_sheet(
             os.getenv("GOOGLE_SHEET_LOGIN_SHEET_ID"),
