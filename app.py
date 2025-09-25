@@ -331,7 +331,7 @@ def generate_excel_files():
     gs.append_sheet(
             os.getenv("GOOGLE_SHEET_LOGIN_SHEET_ID"),
             f"{os.getenv('LOGIN_LOG_SHEET_NAME')}",
-            [[login_row]]
+            [login_row]
         )
 
     if err_msg:
